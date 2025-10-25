@@ -16,7 +16,7 @@ bind_port = 4533
 
 AZhome = 0 # AZ / X motor home
 ELhome = 0 # EL / Y motor home
-SendToHome = False
+SendToHome = False # send rotator to home on startup
 
 minEL = 0
 minAZ = -90

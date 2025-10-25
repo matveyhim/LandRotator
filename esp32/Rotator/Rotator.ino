@@ -2,7 +2,7 @@
 #include <Adafruit_NeoPixel.h>
 
 GStepper<STEPPER2WIRE> stepX(320000, 26, 27, 13); // steps/rev, step, dir, en
-GStepper<STEPPER2WIRE> stepY(320000, 32, 33, 26);
+GStepper<STEPPER2WIRE> stepY(320000, 32, 33, 25);
 
 #define SerialPort Serial
 #define ledPin  2
@@ -19,15 +19,18 @@ GStepper<STEPPER2WIRE> stepY(320000, 32, 33, 26);
 
 #define Cal_on_start false
 
-bool testMode=false;
-bool parking=false;
-bool autoPwr=false;
+bool testMode = false;
+bool parking = true;
+bool autoPwr = false;
 
 float az;
 float el;
 String line;
 float azSet;
 float elSet;
+bool ifser = false;
+uint32_t t;
+
 TaskHandle_t Task1;
 
 Adafruit_NeoPixel pix(numLeds, ledPin, NEO_GRB + NEO_KHZ800);
@@ -93,18 +96,23 @@ void fillStrip(int r, int g, int b){
   }
 }
 
-void Task1code( void * pvParameters ){ 
-  while(1){     // Tick on second core
-    stepY.tick();
-    stepX.tick();
-//    yield();
-    vTaskDelay(1);
-//    delayMicroseconds(500);
+void Task1code( void * Parameter ){ 
+  while(1){
+    t = millis();
+//    Serial.println(millis() - t);
+    while(ifser){//infinite loop
+      if ((millis() - t) > 400) ifser = false;
+      stepY.tick();
+      stepX.tick();
+    }
+      delay(1);
   }
 }
 
 
 void setup() {
+//  pinMode(led, OUTPUT);
+  
   SerialPort.begin(115200);
   Serial.setTimeout(4);
   pinMode(Xend, INPUT);
@@ -125,8 +133,7 @@ void setup() {
   stepX.autoPower(autoPwr);
 
   delay(500); 
-  
-  xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 2, NULL,  0);
+ xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 1);
 }
 
 void loop() {
@@ -164,15 +171,18 @@ void loop() {
   stepX.setTargetDeg(elSet,ABSOLUTE);
   stepY.setTargetDeg(azSet,ABSOLUTE);
 
-  
+  vTaskDelay(1);
   while(stepY.tick() or stepX.tick()){
-//    delay(1);
+    vTaskDelay(1);
+    ifser = true;
     stepY.tick();
     stepX.tick();
-    az=stepY.getCurrentDeg();
-    el=stepX.getCurrentDeg();
+    az = stepY.getCurrentDeg();
+    el = stepX.getCurrentDeg();
     
     if (Serial.available()) {
+//      Serial.println("fser = true ");
+      ifser = true;
       line = Serial.readString();
       String param;                                           //Parameter value
       int firstSpace;                                         //Position of the first space in the command line
