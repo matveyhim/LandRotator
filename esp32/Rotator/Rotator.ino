@@ -4,6 +4,14 @@
 GStepper<STEPPER2WIRE> stepX(1280000L, 26, 27, 13); // steps/rev, step, dir, en
 GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 25);
 
+/*
+ * 12800 steps
+ * 1:100 recucer
+ * ESP32-WROOM-DA Module
+ * Arduino & Events on core 1
+ * Stepper tick on core 0
+ */
+
 #define SerialPort Serial
 #define ledPin  2
 #define numLeds 8
@@ -14,17 +22,18 @@ GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 25);
 #define Yend 35 // azimuth / Y axis
 
 // offset for endstops //
-#define X_offset 5   //  EL/X
-#define Y_offset -10 //  AZ/Y
+#define X_offset 5     //  EL/X
+#define Y_offset -10   //  AZ/Y
 
-#define X_motor_speed 65000L
-#define Y_motor_speed 65000L
+// motor speed in steps/s //
+#define X_motor_speed 65000L  //  EL/X
+#define Y_motor_speed 65000L  //  AZ/Y
 
-#define Cal_on_start false
+#define Cal_on_start false  // Caibrate motors on startup
 
-bool testMode = false;
-bool parking = true;
-bool autoPwr = false;
+#define Test_mode  false // don't return home after calibration
+#define Parking  true    // disable motors in parked position
+#define Auto_Pwr  false  // enable autoPower
 
 float az;
 float el;
@@ -63,7 +72,7 @@ void cal(){
   stepY.setCurrentDeg(90 + X_offset); // set current position with offset
   stepY.setRunMode(FOLLOW_POS);       // set follow pos run mode
   stepY.setTargetDeg(0, ABSOLUTE);    // return motor to 0
-  while(stepY.tick() and !testMode) {stepY.tick();}
+  while(stepY.tick() and !Test_mode) {stepY.tick();}
   
   fillStrip(255,70,0); // yellow, half complete
 
@@ -81,7 +90,7 @@ void cal(){
   stepX.setCurrentDeg(90 + Y_offset); // set current position with offset
   stepX.setRunMode(FOLLOW_POS);       // set follow pos run mode
   stepX.setTargetDeg(0,ABSOLUTE);     // return motor to 0
-  while(stepX.tick() and !testMode) {
+  while(stepX.tick() and !Test_mode) {
     stepX.tick();
   }
 
@@ -106,7 +115,7 @@ void fillStrip(int r, int g, int b){
 void Task1code( void * Parameter ){ 
   while(1){
     t = millis();
-    while((millis() - t) < 200){//infinite loop
+    while((millis() - t) < 400){//infinite loop
       stepY.tick();
       stepX.tick();
     }
@@ -134,8 +143,8 @@ void setup() {
 
   if (Cal_on_start) cal(); // Calibrate
   
-  stepY.autoPower(autoPwr);
-  stepX.autoPower(autoPwr);
+  stepY.autoPower(Auto_Pwr);
+  stepX.autoPower(Auto_Pwr);
 
   delay(500); 
  xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 0);
@@ -165,7 +174,7 @@ void loop() {
     }
   }
   
-  if (az==0.0 and el==0.0 and parking){
+  if (az==0.0 and el==0.0 and Parking){
     stepY.disable();
     stepX.disable();
   }else{
@@ -182,7 +191,7 @@ void loop() {
 //  Serial.print((millis()+100) - tI);
 //  Serial.print(" loop ");
 //  Serial.println(millis());
-  while((stepY.tick() or stepX.tick()) and ((millis()+200) - tI) <= 200){
+  while((stepY.tick() or stepX.tick()) and ((millis()+200) - tI) <= 400){
 //    Serial.print((millis()+100) - tI);
 //    Serial.println(" while");
     
