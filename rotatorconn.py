@@ -6,7 +6,7 @@ import time
 from math import asin, sin, cos, atan2, pi, degrees, radians
 from typing import Tuple
 
-XYmode = True
+XYmode = True # XY or AZ/EL rotator
 # XYmode = False
 baudrate = 115200
 # baudrate = 9600
@@ -22,17 +22,13 @@ minEL = 0
 minAZ = -90
 maxAZ = 450
 
-az=0
-el=0
+az = 0
+el = 0
 
 global ser
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 ser = serial.Serial()
 ser.close()
-
-class Error(Exception):
-    def __str__(self):
-        return 'rotator not connected'
 
 def serial_ports():
     """ Lists serial port names
@@ -166,8 +162,7 @@ def doComms(client_socket):
         print ("    Sended: RPRT 0") 
     return text
 
-
-ports=serial_ports()
+ports = serial_ports()
 print(ports)
 
 def search(ports):
@@ -194,13 +189,12 @@ def search(ports):
 
 search(ports)
 
-while ports==[] or ser.isOpen() == False:
+while ports == [] or ser.isOpen() == False:
     print('Connnect rotator!!!')
     ports=serial_ports()
     print(ports)
     search(ports)
     time.sleep(1)
-    # raise Error
 
 if SendToHome: ser.write(b"AZ"+str(AZhome)+" EL"+str(ELhome))
 
