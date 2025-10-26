@@ -4,7 +4,9 @@
 GStepper<STEPPER2WIRE> stepX(1280000L, 26, 27, 13); // steps/rev, step, dir, en
 GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 25);
 
-/*
+/* 
+ *  X motor axis - W/E (bottom motor)
+ *  Y motor axis - N/S (top motor)
  * 12800 steps
  * 1:100 recucer
  * ESP32-WROOM-DA Module
@@ -22,18 +24,22 @@ GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 25);
 #define Yend 35 // azimuth / Y axis
 
 // offset for endstops //
-#define X_offset 5     //  EL/X
-#define Y_offset -10   //  AZ/Y
+#define X_offset 5            //  EL/X
+#define Y_offset -10          //  AZ/Y
 
 // motor speed in steps/s //
 #define X_motor_speed 65000L  //  EL/X
 #define Y_motor_speed 65000L  //  AZ/Y
 
-#define Cal_on_start false  // Caibrate motors on startup
+// reverse motor //
+#define Reverse_X_motor true  //  EL/X
+#define Reverse_Y_motor false //  EL/X
 
-#define Test_mode  false // don't return home after calibration
-#define Parking  true    // disable motors in parked position
-#define Auto_Pwr  false  // enable autoPower
+#define Cal_on_start false    // Caibrate motors on startup
+
+#define Test_mode false       // don't return home after calibration
+#define Parking   true        // disable motors in parked position
+#define Auto_Pwr  false       // enable autoPower
 
 float az;
 float el;
@@ -140,6 +146,9 @@ void setup() {
   
   stepY.setMaxSpeed(Y_motor_speed);
   stepX.setMaxSpeed(X_motor_speed);
+
+  stepY.reverse(Reverse_Y_motor);
+  stepX.reverse(Reverse_X_motor);
 
   if (Cal_on_start) cal(); // Calibrate
   

@@ -87,8 +87,8 @@ def setPosition(az, el):
         x = degrees(x)
         y = degrees(y)
     else:
-        x=az
-        y=el
+        x = az
+        y = el
 
     resp = 'AZ'+'{:.3f}'.format(round(x,3))+' EL'+'{:.3f}'.format(round(y,3))+'\n'
     ser.write(resp.encode('ascii'))
@@ -98,9 +98,9 @@ def getPosition():
     ser.write(b"AZ EL")
     resp=ser.readline().decode('ascii')
 
-    space=resp.find(' ') # format: AZ XX.xxx EL XX.xxx
-    x=float(resp[2:space])
-    y=float(resp[space+3:len(resp)-1])
+    space=resp.find(' ') # format: AZXX.xxx ELYY.yyy
+    x = float(resp[2:space])
+    y = float(resp[space+3:len(resp)-1])
 
     if XYmode:
         x = radians(x)
@@ -110,10 +110,10 @@ def getPosition():
         az = degrees(az)
         el = degrees(el)
     else:
-        az=x
-        el=y
+        az = x
+        el = y
 
-    if az<0: az=az+360
+    if az<0: az = az+360
     return (az, el)
 
 def parse(text):
@@ -146,15 +146,15 @@ def doComms(client_socket):
         print ("    Sended: "+resp[:len(resp)-1])
 
     if text.find('P')!=-1:
-        az, el = parse(text) # format: P XX.xxx XX.xxx
+        az, el = parse(text) # format: P AA.aaa EE.eee
         if az>maxAZ:
             az = az-360
             
         if az<minAZ:
-            az = minAZ
+            az = az+360
             
         if el<minEL:
-            el=minEL
+            el = minEL
 
         setPosition(az, el)
 
