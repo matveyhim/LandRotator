@@ -1,8 +1,8 @@
 #include <GyverStepper.h>
 #include <Adafruit_NeoPixel.h>
 
-GStepper<STEPPER2WIRE> stepX(320000, 26, 27, 13); // steps/rev, step, dir, en
-GStepper<STEPPER2WIRE> stepY(320000, 32, 33, 25);
+GStepper<STEPPER2WIRE> stepX(1280000L, 26, 27, 13); // steps/rev, step, dir, en
+GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 25);
 
 #define SerialPort Serial
 #define ledPin  2
@@ -17,6 +17,9 @@ GStepper<STEPPER2WIRE> stepY(320000, 32, 33, 25);
 #define X_offset 5   //  EL/X
 #define Y_offset -10 //  AZ/Y
 
+#define X_motor_speed 65000L
+#define Y_motor_speed 65000L
+
 #define Cal_on_start false
 
 bool testMode = false;
@@ -28,7 +31,7 @@ float el;
 String line;
 float azSet;
 float elSet;
-bool ifser = false;
+uint32_t tI;
 uint32_t t;
 
 TaskHandle_t Task1;
@@ -45,9 +48,10 @@ void printAzEl() {
 
 void cal(){
   fillStrip(255,0,0); // red, started
-  
-  stepY.setRunMode(KEEP_SPEED);       // find X axis endstop
-  stepY.setSpeedDeg(10);
+
+  // find X axis endstop //
+  stepY.setRunMode(KEEP_SPEED); // set keep speed run mode
+  stepY.setSpeedDeg(10);        // run motor until endstop
   while(digitalRead(Xend)==0 and stepY.getCurrentDeg()<=180) {
     stepY.tick();
     if (stepY.getCurrentDeg()>180) while(1){
@@ -55,15 +59,17 @@ void cal(){
     }
   }
 
-  stepY.setCurrentDeg(90 + X_offset);            // return home
-  stepY.setRunMode(FOLLOW_POS);
-  stepY.setTargetDeg(0, ABSOLUTE);
+  // return home //
+  stepY.setCurrentDeg(90 + X_offset); // set current position with offset
+  stepY.setRunMode(FOLLOW_POS);       // set follow pos run mode
+  stepY.setTargetDeg(0, ABSOLUTE);    // return motor to 0
   while(stepY.tick() and !testMode) {stepY.tick();}
   
   fillStrip(255,70,0); // yellow, half complete
-  
-  stepX.setRunMode(KEEP_SPEED);      // find Y axis endstop
-  stepX.setSpeedDeg(10);
+
+  // find Y axis endstop //
+  stepX.setRunMode(KEEP_SPEED); // set keep speed run mode
+  stepX.setSpeedDeg(10);        // run motor until endstop
   while(digitalRead(Yend)==0 and stepX.getCurrentDeg()<=180) {
     stepX.tick();
     if (stepX.getCurrentDeg()>180) while(1){
@@ -71,9 +77,10 @@ void cal(){
     }
   }
 
-  stepX.setCurrentDeg(90 + Y_offset);          // return home
-  stepX.setRunMode(FOLLOW_POS);
-  stepX.setTargetDeg(0,ABSOLUTE);
+  // return home  //
+  stepX.setCurrentDeg(90 + Y_offset); // set current position with offset
+  stepX.setRunMode(FOLLOW_POS);       // set follow pos run mode
+  stepX.setTargetDeg(0,ABSOLUTE);     // return motor to 0
   while(stepX.tick() and !testMode) {
     stepX.tick();
   }
@@ -99,20 +106,17 @@ void fillStrip(int r, int g, int b){
 void Task1code( void * Parameter ){ 
   while(1){
     t = millis();
-//    Serial.println(millis() - t);
-    while(ifser){//infinite loop
-      if ((millis() - t) > 400) ifser = false;
+    while((millis() - t) < 200){//infinite loop
       stepY.tick();
       stepX.tick();
     }
-      delay(1);
+//    Serial.println("Task!");
+    vTaskDelay(1);
   }
 }
 
 
-void setup() {
-//  pinMode(led, OUTPUT);
-  
+void setup() { 
   SerialPort.begin(115200);
   Serial.setTimeout(4);
   pinMode(Xend, INPUT);
@@ -122,10 +126,11 @@ void setup() {
   pix.clear();
   pix.setBrightness(brightness);
 
-  stepY.setAcceleration(9000);
-  stepX.setAcceleration(9000);
-  stepY.setMaxSpeed(8000);    //1500
-  stepX.setMaxSpeed(8000);    //1000
+  stepY.setAcceleration(40000L);
+  stepX.setAcceleration(40000L);
+  
+  stepY.setMaxSpeed(Y_motor_speed);
+  stepX.setMaxSpeed(X_motor_speed);
 
   if (Cal_on_start) cal(); // Calibrate
   
@@ -133,7 +138,7 @@ void setup() {
   stepX.autoPower(autoPwr);
 
   delay(500); 
- xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 1);
+ xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 0);
 }
 
 void loop() {
@@ -160,7 +165,7 @@ void loop() {
     }
   }
   
-  if (azSet==0.0 and elSet==0.0 and parking){
+  if (az==0.0 and el==0.0 and parking){
     stepY.disable();
     stepX.disable();
   }else{
@@ -170,19 +175,24 @@ void loop() {
 
   stepX.setTargetDeg(elSet,ABSOLUTE);
   stepY.setTargetDeg(azSet,ABSOLUTE);
-
+  
   vTaskDelay(1);
-  while(stepY.tick() or stepX.tick()){
-    vTaskDelay(1);
-    ifser = true;
+ 
+  tI = millis()+100;
+//  Serial.print((millis()+100) - tI);
+//  Serial.print(" loop ");
+//  Serial.println(millis());
+  while((stepY.tick() or stepX.tick()) and ((millis()+200) - tI) <= 200){
+//    Serial.print((millis()+100) - tI);
+//    Serial.println(" while");
+    
     stepY.tick();
     stepX.tick();
+    
     az = stepY.getCurrentDeg();
     el = stepX.getCurrentDeg();
     
     if (Serial.available()) {
-//      Serial.println("fser = true ");
-      ifser = true;
       line = Serial.readString();
       String param;                                           //Parameter value
       int firstSpace;                                         //Position of the first space in the command line
