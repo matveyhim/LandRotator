@@ -213,4 +213,7 @@ try:
                     break        
         finally:
             conn.close()
-finally: server.close()
+except KeyboardInterrupt: 
+    server.close()
+finally:
+    print("Bye")

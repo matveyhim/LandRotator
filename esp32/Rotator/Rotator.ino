@@ -24,18 +24,18 @@ GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 25);
 #define Yend 35 // azimuth / Y axis
 
 // offset for endstops //
-#define X_offset 5            //  EL/X
-#define Y_offset -10          //  AZ/Y
+#define X_offset -8.5          //  EL/X
+#define Y_offset -5          //  AZ/Y
 
 // motor speed in steps/s //
-#define X_motor_speed 65000L  //  EL/X
-#define Y_motor_speed 65000L  //  AZ/Y
+#define X_motor_speed 80000UL  //  EL/X
+#define Y_motor_speed 80000UL  //  AZ/Y
 
 // reverse motor //
-#define Reverse_X_motor true  //  EL/X
+#define Reverse_X_motor false  //  EL/X
 #define Reverse_Y_motor false //  EL/X
 
-#define Cal_on_start false    // Caibrate motors on startup
+#define Cal_on_start true    // Caibrate motors on startup
 
 #define Test_mode false       // don't return home after calibration
 #define Parking   true        // disable motors in parked position
@@ -75,7 +75,7 @@ void cal(){
   }
 
   // return home //
-  stepY.setCurrentDeg(90 + X_offset); // set current position with offset
+  stepY.setCurrentDeg((90 + Y_offset)); // set current position with offset
   stepY.setRunMode(FOLLOW_POS);       // set follow pos run mode
   stepY.setTargetDeg(0, ABSOLUTE);    // return motor to 0
   while(stepY.tick() and !Test_mode) {stepY.tick();}
@@ -93,7 +93,7 @@ void cal(){
   }
 
   // return home  //
-  stepX.setCurrentDeg(90 + Y_offset); // set current position with offset
+  stepX.setCurrentDeg((90 + X_offset)); // set current position with offset
   stepX.setRunMode(FOLLOW_POS);       // set follow pos run mode
   stepX.setTargetDeg(0,ABSOLUTE);     // return motor to 0
   while(stepX.tick() and !Test_mode) {
@@ -141,8 +141,8 @@ void setup() {
   pix.clear();
   pix.setBrightness(brightness);
 
-  stepY.setAcceleration(40000L);
-  stepX.setAcceleration(40000L);
+  stepY.setAcceleration(320000UL);
+  stepX.setAcceleration(320000UL);
   
   stepY.setMaxSpeed(Y_motor_speed);
   stepX.setMaxSpeed(X_motor_speed);
