@@ -196,7 +196,7 @@ while ports == [] or ser.isOpen() == False:
     search(ports)
     time.sleep(1)
 
-if SendToHome: ser.write(b"AZ"+str(AZhome)+" EL"+str(ELhome))
+if SendToHome: setPosition(AZhome, ELhome)
 
 server.bind((bind_ip, bind_port))
 server.listen()

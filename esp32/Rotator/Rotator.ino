@@ -1,5 +1,7 @@
 #include <GyverStepper.h>
-#include <Adafruit_NeoPixel.h>
+//#include <Adafruit_NeoPixel.h>
+#include <WiFi.h>
+#include "Arduino.h"
 
 GStepper<STEPPER2WIRE> stepX(1280000L, 26, 27, 13); // steps/rev, step, dir, en
 GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 25);
@@ -14,17 +16,24 @@ GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 25);
  * Stepper tick on core 0
  */
 
+const char* ssid = "iPlanumXZ";
+const char* password = "4edbarklox";
+
+#define server_port 4533
+
 #define SerialPort Serial
 #define ledPin  2
 #define numLeds 8
 #define brightness 50
+
+#define XYmode true
 
 // endstop pin //
 #define Xend 34 // elevation / X axis
 #define Yend 35 // azimuth / Y axis
 
 // offset for endstops //
-#define X_offset -8.5          //  EL/X
+#define X_offset -8.5        //  EL/X
 #define Y_offset -5          //  AZ/Y
 
 // motor speed in steps/s //
@@ -35,31 +44,62 @@ GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 25);
 #define Reverse_X_motor false  //  EL/X
 #define Reverse_Y_motor false //  EL/X
 
+#define minEL  -0.5
+#define minAZ  -90
+#define maxAZ  450
+
 #define Cal_on_start true    // Caibrate motors on startup
 
 #define Test_mode false       // don't return home after calibration
 #define Parking   true        // disable motors in parked position
 #define Auto_Pwr  false       // enable autoPower
 
-float az;
-float el;
-String line;
-float azSet;
-float elSet;
+WiFiServer server(server_port);
+
 uint32_t tI;
 uint32_t t;
+float azSet;
+float elSet;
+
+struct AzEl {
+  float az;
+  float el;
+};
+
+struct XY {
+  float x;
+  float y;
+};
 
 TaskHandle_t Task1;
 
-Adafruit_NeoPixel pix(numLeds, ledPin, NEO_GRB + NEO_KHZ800);
+//Adafruit_NeoPixel pix(numLeds, ledPin, NEO_GRB + NEO_KHZ800);
 
-void printAzEl() {
-  SerialPort.print("AZ");
-  SerialPort.print(az, 3);
-  SerialPort.print(" EL");
-  SerialPort.print(el, 3);
-  SerialPort.print("\n");
-}
+struct XY AE2XY(float azimuth, float elevation){
+  struct XY pos;
+  azimuth = radians(azimuth);
+  elevation = radians(elevation);
+
+  pos.x = degrees(asin(sin(azimuth) * cos(elevation)));
+  pos.y = degrees(-atan2(cos(azimuth) * cos(elevation), sin(elevation)));
+  
+  return pos;
+};
+
+struct AzEl XY2AE(float x, float y){
+  struct AzEl pos;
+  x = radians(x);
+  y = radians(y);
+
+  float x0 = sin(x);
+  float y0 = -sin(y)*cos(x);
+  float z0 = cos(y)*cos(x);
+  
+  pos.el = degrees(asin(z0));
+  pos.az = degrees(- atan2(y0, x0) + HALF_PI);
+  
+  return pos;
+};
 
 void cal(){
   fillStrip(255,0,0); // red, started
@@ -103,6 +143,13 @@ void cal(){
   fillStrip(0,255,0); // green, completed
 }
 
+void fillStrip(int r, int g, int b){
+  for(int i=0; i<numLeds; i++) {
+//    pix.setPixelColor(i, pix.Color(r, g, b));
+//    pix.show();
+  }
+}
+
 void calError(){
   fillStrip(255,0,0);
   delay(200);
@@ -111,10 +158,113 @@ void calError(){
   vTaskDelay(1);
 }
 
-void fillStrip(int r, int g, int b){
-  for(int i=0; i<numLeds; i++) {
-    pix.setPixelColor(i, pix.Color(r, g, b));
-    pix.show();
+void printAzEl(WiFiClient client, float az, float el) {
+  client.print(String(az,3)+" "+String(el,3)+" \n");
+}
+
+void printAzElSerial(float az, float el) {
+  SerialPort.print("AZ");
+  SerialPort.print(az, 3);
+  SerialPort.print(" EL");
+  SerialPort.print(el, 3);
+  SerialPort.print("\n");
+}
+
+void parseComm(WiFiClient client, String resp) {
+  String param;                                
+  int ISpace;
+  int IISpace;
+  float az;
+  float el;
+  float x, y;
+  
+  //// parse TCP rotctl ////
+  if (resp.startsWith("P") or resp.startsWith("p")) {
+
+    if (resp.indexOf("p") != -1){       //// get pos ////
+      y = stepY.getCurrentDeg();
+      x = stepX.getCurrentDeg();
+
+      if (XYmode){
+        struct AzEl pos = XY2AE(x, y);
+        az = pos.az;
+        el = pos.el;
+      }else{
+        az = x;
+        el = y;
+      }
+
+      printAzEl(client, az, el);
+
+    }else if(resp.indexOf("P") != -1){  //// set pos ////
+       ISpace=resp.indexOf(' ');
+       IISpace=resp.indexOf(' ',ISpace+1);
+      
+       azSet = resp.substring(ISpace, IISpace).toFloat();
+       elSet = resp.substring(IISpace+1, resp.length()-1).toFloat();
+
+       if (azSet > maxAZ){
+           azSet = azSet - 360;
+       }
+      
+       if (azSet < minAZ){
+           azSet = azSet + 360;
+       }
+      
+       if (elSet < minEL){
+           elSet = minEL;
+       }
+
+         if (XYmode){
+    struct XY pos = AE2XY(azSet, elSet);
+    azSet = pos.y;
+    elSet = pos.x;
+  }
+
+      client.print("RPRT 0 \n");
+      Serial.print("RPRT 0 \n");
+
+    }
+  
+  } else if (resp.startsWith("AZ")) {//// parse serial easycomm ////
+    
+    if (resp.indexOf("AZ EL")!=-1) {
+      y = stepY.getCurrentDeg();
+      x = stepX.getCurrentDeg();
+
+      if (XYmode){
+        struct AzEl pos = XY2AE(x, y);
+        az = pos.az;
+        el = pos.el;
+      }else{
+        az = x;
+        el = y;
+      }
+      
+      printAzElSerial(az, el);                     //Send the current Azimuth and Elevation
+
+    } else if (resp.startsWith("AZ")) {            //Position command received: Parse the line.
+      ISpace = resp.indexOf(' ');                  //Get the position of the first space
+      IISpace = resp.indexOf(' ', ISpace + 1);     //Get the position of the second space
+      param = resp.substring(2, ISpace);           //Get the first parameter
+      azSet = param.toFloat();                     //Set the azSet value
+      param = resp.substring(ISpace + 3, IISpace); //Get the second parameter
+      elSet = param.toFloat();                     //Set the elSet value
+      SerialPort.print(ISpace+" "+IISpace);
+    } else if (resp.indexOf("calibration")!=-1) {
+      cal();
+    }
+  }
+  
+  stepX.setTargetDeg(elSet,ABSOLUTE);
+  stepY.setTargetDeg(azSet,ABSOLUTE);
+
+  if (x == 0.0 and y == 0.0 and Parking){
+     stepY.disable();
+     stepX.disable();
+  }else{
+     stepY.enable();
+     stepX.enable();
   }
 }
 
@@ -125,21 +275,27 @@ void Task1code( void * Parameter ){
       stepY.tick();
       stepX.tick();
     }
-//    Serial.println("Task!");
     vTaskDelay(1);
   }
 }
-
 
 void setup() { 
   SerialPort.begin(115200);
   Serial.setTimeout(4);
   pinMode(Xend, INPUT);
   pinMode(Yend, INPUT);
+  
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+  }
+  Serial.println(WiFi.localIP());
+  server.begin();
 
-  pix.begin();
-  pix.clear();
-  pix.setBrightness(brightness);
+//  pix.begin();
+//  pix.clear();
+//  pix.setBrightness(brightness);
 
   stepY.setAcceleration(320000UL);
   stepX.setAcceleration(320000UL);
@@ -156,78 +312,43 @@ void setup() {
   stepX.autoPower(Auto_Pwr);
 
   delay(500); 
- xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 0);
+  xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 0);
 }
 
 void loop() {
-  az = stepY.getCurrentDeg();
-  el = stepX.getCurrentDeg();
-  
-  if (Serial.available()) {
-    line = Serial.readString();
-    String param;                                          
-    int firstSpace;                                         
-    int secondSpace;                                        
-    
-    if (line.indexOf("AZ EL")!=-1) {                        
-      printAzEl();                                         
-    } else if (line.startsWith("AZ")) {
-      firstSpace = line.indexOf(' ');
-      secondSpace = line.indexOf(' ', firstSpace + 1);
-      param = line.substring(2, firstSpace);
-      azSet = param.toFloat();
-      param = line.substring(firstSpace + 3, secondSpace);
-      elSet = param.toFloat();
-    } else if (line.indexOf("calibration")!=-1) {
-      cal();
+  WiFiClient client = server.available();
+  //// TCP handling ////
+  if (client) {
+    Serial.println("Client connected!");
+    while (client.connected()) {
+       if (client.available()) {
+          String Data = client.readStringUntil('\n');
+          
+          Serial.print("Received: ");
+          Serial.println(Data);
+          
+          parseComm(client, Data);
+       }
     }
-  }
-  
-  if (az==0.0 and el==0.0 and Parking){
-    stepY.disable();
-    stepX.disable();
-  }else{
-    stepY.enable();
-    stepX.enable();
+    client.stop();
   }
 
-  stepX.setTargetDeg(elSet,ABSOLUTE);
-  stepY.setTargetDeg(azSet,ABSOLUTE);
+  if (Serial.available() and !client.connected()) {
+    String Data = Serial.readString();
+    parseComm(client, Data);
+  }
   
   vTaskDelay(1);
  
   tI = millis()+100;
-//  Serial.print((millis()+100) - tI);
-//  Serial.print(" loop ");
-//  Serial.println(millis());
+
   while((stepY.tick() or stepX.tick()) and ((millis()+200) - tI) <= 400){
-//    Serial.print((millis()+100) - tI);
-//    Serial.println(" while");
-    
     stepY.tick();
     stepX.tick();
     
-    az = stepY.getCurrentDeg();
-    el = stepX.getCurrentDeg();
-    
     if (Serial.available()) {
-      line = Serial.readString();
-      String param;                                           //Parameter value
-      int firstSpace;                                         //Position of the first space in the command line
-      int secondSpace;                                        //Position of the second space in the command line
-      
-      if (line.indexOf("AZ EL")!=-1) {                         //Query command received
-        printAzEl();                                          //Send the current Azimuth and Elevation
-      } else if (line.startsWith("AZ")) {                          //Position command received: Parse the line.
-        firstSpace = line.indexOf(' ');                     //Get the position of the first space
-        secondSpace = line.indexOf(' ', firstSpace + 1);    //Get the position of the second space
-        param = line.substring(2, firstSpace);              //Get the first parameter
-        azSet = param.toFloat();                            //Set the azSet value
-        param = line.substring(firstSpace + 3, secondSpace);//Get the second parameter
-        elSet = param.toFloat();                            //Set the elSet value
-      } else if (line.indexOf("calibration")!=-1) {
-        cal();
-      }
+      String Data = Serial.readString();
+      parseComm(client, Data);
     }
   }
 }
