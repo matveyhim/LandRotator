@@ -26,7 +26,7 @@ const char* password = "4edbarklox";
 #define numLeds 8
 #define brightness 50
 
-#define XYmode true
+#define XYmode true // XY or AZ/EL rotator
 
 // endstop pin //
 #define Xend 34 // elevation / X axis
@@ -197,37 +197,28 @@ void parseComm(WiFiClient client, String resp) {
       printAzEl(client, az, el);
 
     }else if(resp.indexOf("P") != -1){  //// set pos ////
-       ISpace=resp.indexOf(' ');
-       IISpace=resp.indexOf(' ',ISpace+1);
+      ISpace=resp.indexOf(' ');
+      IISpace=resp.indexOf(' ',ISpace+1);
 
-       azSet = resp.substring(ISpace, IISpace).toFloat();
-       elSet = resp.substring(IISpace+1, resp.length()).toFloat();
-        
-       if (azSet > maxAZ){
-           azSet = azSet - 360;
-       }
-        
-       if (azSet < minAZ){
-           azSet = azSet + 360;
-       }
-        
-       if (elSet < minEL){
-           elSet = minEL;
-       }
-        
-       if (XYmode){
-         struct XY pos = AE2XY(azSet, elSet);
-         azSet = pos.y;
-         elSet = pos.x;
-       }
-        
-       client.print("RPRT 0 \n");
-       Serial.print("RPRT 0 \n");
+      azSet = resp.substring(ISpace, IISpace).toFloat();
+      elSet = resp.substring(IISpace+1, resp.length()).toFloat();
 
+      if (azSet > maxAZ){azSet = azSet - 360;}
+        
+      if (azSet < minAZ){azSet = azSet + 360;}
+        
+      if (elSet < minEL){elSet = minEL;}
+        
+      if (XYmode){
+        struct XY pos = AE2XY(azSet, elSet);
+        azSet = pos.y;
+        elSet = pos.x;
+      }
+      client.print("RPRT 0 \n");
     }
   
   } else if (resp.startsWith("AZ")) {//// parse serial easycomm ////
-    
+
     if (resp.indexOf("AZ EL")!=-1) {
       y = stepY.getCurrentDeg();
       x = stepX.getCurrentDeg();
@@ -237,10 +228,10 @@ void parseComm(WiFiClient client, String resp) {
         az = pos.az;
         el = pos.el;
       }else{
-        az = x;
-        el = y;
+        az = y;
+        el = x;
       }
-      
+
       printAzElSerial(az, el);                     //Send the current Azimuth and Elevation
 
     } else if (resp.startsWith("AZ")) {            //Position command received: Parse the line.
@@ -250,7 +241,12 @@ void parseComm(WiFiClient client, String resp) {
       azSet = param.toFloat();                     //Set the azSet value
       param = resp.substring(ISpace + 3, IISpace); //Get the second parameter
       elSet = param.toFloat();                     //Set the elSet value
-      SerialPort.print(ISpace+" "+IISpace);
+
+      if (XYmode){
+        struct XY pos = AE2XY(azSet, elSet);
+        azSet = pos.y;
+        elSet = pos.x;
+      }
     } else if (resp.indexOf("calibration")!=-1) {
       cal();
     }

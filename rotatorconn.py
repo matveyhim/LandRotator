@@ -6,7 +6,7 @@ import time
 from math import asin, sin, cos, atan2, pi, degrees, radians
 from typing import Tuple
 
-XYmode = True # XY or AZ/EL rotator
+XYmode = False # XY or AZ/EL rotator
 # XYmode = False
 baudrate = 115200
 # baudrate = 9600
@@ -171,7 +171,8 @@ def search(ports):
         ser = serial.Serial(port)
         ser.baudrate = baudrate
         ser.timeout = 2
-        time.sleep(2)
+        time.sleep(5)
+        ser.readline()
         print('trying',port)
         ser.write(b"AZ EL")
 
