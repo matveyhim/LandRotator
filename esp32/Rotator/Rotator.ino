@@ -190,8 +190,8 @@ void parseComm(WiFiClient client, String resp) {
         az = pos.az;
         el = pos.el;
       }else{
-        az = x;
-        el = y;
+        az = y;
+        el = x;
       }
 
       printAzEl(client, az, el);
@@ -199,30 +199,30 @@ void parseComm(WiFiClient client, String resp) {
     }else if(resp.indexOf("P") != -1){  //// set pos ////
        ISpace=resp.indexOf(' ');
        IISpace=resp.indexOf(' ',ISpace+1);
-      
-       azSet = resp.substring(ISpace, IISpace).toFloat();
-       elSet = resp.substring(IISpace+1, resp.length()-1).toFloat();
 
+       azSet = resp.substring(ISpace, IISpace).toFloat();
+       elSet = resp.substring(IISpace+1, resp.length()).toFloat();
+        
        if (azSet > maxAZ){
            azSet = azSet - 360;
        }
-      
+        
        if (azSet < minAZ){
            azSet = azSet + 360;
        }
-      
+        
        if (elSet < minEL){
            elSet = minEL;
        }
-
-         if (XYmode){
-    struct XY pos = AE2XY(azSet, elSet);
-    azSet = pos.y;
-    elSet = pos.x;
-  }
-
-      client.print("RPRT 0 \n");
-      Serial.print("RPRT 0 \n");
+        
+       if (XYmode){
+         struct XY pos = AE2XY(azSet, elSet);
+         azSet = pos.y;
+         elSet = pos.x;
+       }
+        
+       client.print("RPRT 0 \n");
+       Serial.print("RPRT 0 \n");
 
     }
   
@@ -323,10 +323,6 @@ void loop() {
     while (client.connected()) {
        if (client.available()) {
           String Data = client.readStringUntil('\n');
-          
-          Serial.print("Received: ");
-          Serial.println(Data);
-          
           parseComm(client, Data);
        }
     }
