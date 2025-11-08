@@ -1,19 +1,22 @@
 #include <GyverStepper.h>
 //#include <Adafruit_NeoPixel.h>
 #include <WiFi.h>
+#include <freertos/FreeRTOS.h> // FreeRTOS - уже встроен в ESP32
+#include <freertos/task.h>    // Задачи FreeRTOS
+#include <esp_task_wdt.h>     // Watchdog таймер ESP32
 #include "Arduino.h"
 
 GStepper<STEPPER2WIRE> stepX(1280000L, 26, 27, 13); // steps/rev, step, dir, en
 GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 14);
 
 /* 
- *  X motor axis - W/E (bottom motor)
- *  Y motor axis - N/S (top motor)
+ *  X motor axis - W/E
+ *  Y motor axis - N/S
  * 12800 steps
  * 1:100 recucer
  * ESP32-WROOM-DA Module
- * Arduino & Events on core 0
- * Stepper tick on core 1
+ * Arduino & Events on core 1
+ * Stepper tick on core 0
  */
 
 const char* ssid = "iPlanumXZ";
@@ -37,8 +40,8 @@ const char* password = "4edbarklox";
 #define Y_offset -5          //  AZ/Y
 
 // motor speed in steps/s //
-#define X_motor_speed 80000UL  //  EL/X
-#define Y_motor_speed 80000UL  //  AZ/Y
+#define X_motor_speed 60000UL  //  EL/X
+#define Y_motor_speed 60000UL  //  AZ/Y
 
 // reverse motor //
 #define Reverse_X_motor false  //  EL/X
@@ -48,7 +51,7 @@ const char* password = "4edbarklox";
 #define minAZ  -90
 #define maxAZ  450
 
-#define Cal_on_start false    // Caibrate motors on startup
+#define Cal_on_start true    // Caibrate motors on startup
 
 #define Test_mode false       // don't return home after calibration
 #define Parking   true        // disable motors in parked position
@@ -58,6 +61,7 @@ WiFiServer server(server_port);
 
 float azSet;
 float elSet;
+int minPeriod;
 
 struct AzEl {
   float az;
@@ -105,7 +109,7 @@ void cal(){
   // find X axis endstop //
   stepX.setRunMode(KEEP_SPEED); // set keep speed run mode
   stepX.setSpeedDeg(10);        // run motor until endstop
-  while(digitalRead(Xend)==0 and stepX.getCurrentDeg()<=180) {
+  while(digitalRead(Xend)==1 and stepX.getCurrentDeg()<=180) {
     stepX.tick();
     if (stepX.getCurrentDeg()>180) while(1){
       calError();
@@ -206,7 +210,19 @@ void parseComm(WiFiClient client, String resp) {
       if (azSet < minAZ){azSet = azSet + 360;}
         
       if (elSet < minEL){elSet = minEL;}
-        
+
+      if (XYmode){
+        struct XY pos = AE2XY(azSet, elSet);
+        XmotorPos = pos.x;
+        YmotorPos = pos.y;
+      }else{
+        XmotorPos = elSet;
+        YmotorPos = azSet;
+      }
+      
+      stepX.setTargetDeg(XmotorPos,ABSOLUTE);
+      stepY.setTargetDeg(YmotorPos,ABSOLUTE);
+      
       client.print("RPRT 0 \n");
     }
   
@@ -235,42 +251,43 @@ void parseComm(WiFiClient client, String resp) {
       param = resp.substring(ISpace + 3, IISpace); //Get the second parameter
       elSet = param.toFloat();                     //Set the elSet value
 
+      if (XYmode){
+        struct XY pos = AE2XY(azSet, elSet);
+        XmotorPos = pos.x;
+        YmotorPos = pos.y;
+      }else{
+        XmotorPos = elSet;
+        YmotorPos = azSet;
+      }
+      
+      stepX.setTargetDeg(XmotorPos,ABSOLUTE);
+      stepY.setTargetDeg(YmotorPos,ABSOLUTE);
+
     } else if (resp.indexOf("calibration")!=-1) {
       cal();
     }
-  }
-
-  if (XYmode){
-    struct XY pos = AE2XY(azSet, elSet);
-    XmotorPos = pos.x;
-    YmotorPos = pos.y;
-  }else{
-    XmotorPos = elSet;
-    YmotorPos = azSet;
-  }
-  
-  stepX.setTargetDeg(XmotorPos,ABSOLUTE);
-  stepY.setTargetDeg(YmotorPos,ABSOLUTE);
-
-  if (x == 0.0 and y == 0.0  and  Parking){
-     stepY.disable();
-     stepX.disable();
-  }else{
-     stepY.enable();
-     stepX.enable();
+    
+    if (x == 0.0 and y == 0.0  and  Parking){
+       stepY.disable();
+       stepX.disable();
+    }else{
+       stepY.enable();
+       stepX.enable();
+    }
   }
 }
 
 void Task1code( void * Parameter ){ 
+  esp_task_wdt_add(NULL);
   while(1){
-//    t = millis();
-//    int minXp = stepX.getMinPeriod() / 2;
-//    int minYp = stepY.getMinPeriod() / 2;
-    stepX.tick();
-    stepY.tick();
-    
-//    delayMicroseconds(min(minXp, minYp));
-//    yield();
+    uint32_t t = millis();
+    while((millis() - t) < 250){//infinite loop
+      stepX.tick();
+      stepY.tick();
+    }
+    Serial.println("reset!");
+    esp_task_wdt_reset();
+    vTaskDelay(pdMS_TO_TICKS(1)); 
   }
 }
 
@@ -292,8 +309,8 @@ void setup() {
 //  pix.clear();
 //  pix.setBrightness(brightness);
 
-  stepY.setAcceleration(80000UL);
-  stepX.setAcceleration(80000UL);
+  stepY.setAcceleration(160000UL);
+  stepX.setAcceleration(160000UL);
   
   stepY.setMaxSpeed(Y_motor_speed);
   stepX.setMaxSpeed(X_motor_speed);
@@ -301,13 +318,19 @@ void setup() {
   stepY.reverse(Reverse_Y_motor);
   stepX.reverse(Reverse_X_motor);
 
+  minPeriod = min((stepX.getMinPeriod() / 2), (stepY.getMinPeriod() / 2));
+  Serial.println(minPeriod);
+
+  disableCore0WDT();
+
   if (Cal_on_start) cal(); // Calibrate
   
   stepY.autoPower(Auto_Pwr);
   stepX.autoPower(Auto_Pwr);
-
+  
   delay(500); 
-  xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 1);
+  esp_task_wdt_init(30, false);
+  xTaskCreatePinnedToCore(Task1code, "Task1", 255, NULL, 1, &Task1, 0);
 }
 
 void loop() {

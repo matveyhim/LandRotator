@@ -6,7 +6,7 @@ import time
 from math import asin, sin, cos, atan2, pi, degrees, radians
 from typing import Tuple
 
-XYmode = False # XY or AZ/EL rotator
+XYmode = True # XY or AZ/EL rotator
 # XYmode = False
 baudrate = 115200
 # baudrate = 9600
