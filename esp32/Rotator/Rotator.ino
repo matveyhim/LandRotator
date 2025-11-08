@@ -4,7 +4,7 @@
 #include "Arduino.h"
 
 GStepper<STEPPER2WIRE> stepX(1280000L, 26, 27, 13); // steps/rev, step, dir, en
-GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 25);
+GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 14);
 
 /* 
  *  X motor axis - W/E (bottom motor)
