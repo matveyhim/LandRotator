@@ -1,10 +1,11 @@
 #include <GyverStepper.h>
 //#include <Adafruit_NeoPixel.h>
 #include <WiFi.h>
-#include <freertos/FreeRTOS.h> // FreeRTOS - уже встроен в ESP32
-#include <freertos/task.h>    // Задачи FreeRTOS
-#include <esp_task_wdt.h>     // Watchdog таймер ESP32
+
 #include "Arduino.h"
+//#include <freertos/FreeRTOS.h>
+//#include <freertos/task.h>
+//#include <esp_task_wdt.h>
 
 GStepper<STEPPER2WIRE> stepX(1280000L, 26, 27, 13); // steps/rev, step, dir, en
 GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 14);
@@ -61,7 +62,9 @@ WiFiServer server(server_port);
 
 float azSet;
 float elSet;
-int minPeriod;
+//int minPeriod;
+uint32_t tI;
+uint32_t t;
 
 struct AzEl {
   float az;
@@ -73,9 +76,7 @@ struct XY {
   float y;
 };
 
-TaskHandle_t Task1;
-
-//Adafruit_NeoPixel pix(numLeds, ledPin, NEO_GRB + NEO_KHZ800);
+TaskHandle_t Core0_Main;
 
 struct XY AE2XY(float azimuth, float elevation){
   struct XY pos;
@@ -277,17 +278,20 @@ void parseComm(WiFiClient client, String resp) {
   }
 }
 
-void Task1code( void * Parameter ){ 
-  esp_task_wdt_add(NULL);
+void core0_main_task(void *pvParameter) { //s?
+//  esp_task_wdt_add(NULL);
+  
   while(1){
-    uint32_t t = millis();
+    t = millis();
     while((millis() - t) < 250){//infinite loop
       stepX.tick();
       stepY.tick();
     }
-    Serial.println("reset!");
-    esp_task_wdt_reset();
-    vTaskDelay(pdMS_TO_TICKS(1)); 
+//    Serial.println("reset!");
+  // и так сойдет
+//    esp_task_wdt_reset(); 
+//    vTaskDelay(pdMS_TO_TICKS(1));
+vTaskDelay(1);
   }
 }
 
@@ -305,10 +309,6 @@ void setup() {
   Serial.println(WiFi.localIP());
   server.begin();
 
-//  pix.begin();
-//  pix.clear();
-//  pix.setBrightness(brightness);
-
   stepY.setAcceleration(160000UL);
   stepX.setAcceleration(160000UL);
   
@@ -318,10 +318,8 @@ void setup() {
   stepY.reverse(Reverse_Y_motor);
   stepX.reverse(Reverse_X_motor);
 
-  minPeriod = min((stepX.getMinPeriod() / 2), (stepY.getMinPeriod() / 2));
-  Serial.println(minPeriod);
-
-  disableCore0WDT();
+//  minPeriod = min((stepX.getMinPeriod() / 2), (stepY.getMinPeriod() / 2));
+//  Serial.println(minPeriod);
 
   if (Cal_on_start) cal(); // Calibrate
   
@@ -329,21 +327,51 @@ void setup() {
   stepX.autoPower(Auto_Pwr);
   
   delay(500); 
-  esp_task_wdt_init(30, false);
-  xTaskCreatePinnedToCore(Task1code, "Task1", 255, NULL, 1, &Task1, 0);
+  Serial.println("Starting Core 0 task...");
+//  esp_task_wdt_init(30, false);
+  xTaskCreatePinnedToCore(
+        core0_main_task,   // Функция задачи
+        "Core0_Main",      // Имя задачи
+        10000,              // Размер стека (увеличьте если нужно)
+        NULL,              // Параметры
+        1,                 // Приоритет (нормальный)
+        NULL,              // Handle задачи
+        0                  // Ядро 0
+    );
 }
 
 void loop() {
   WiFiClient client = server.available();
+//  //// TCP handling ////
+//  if (client) {
+//    Serial.println("Client connected!");
+//    while (client.connected()) {
+//      if (client.available()) {
+//        String Data = client.readStringUntil('\n');
+//        parseComm(client, Data);
+//        vTaskDelay(1);
+//      }
+//      stepX.tick();
+//      stepY.tick();
+//    }
+//    client.stop();
+//  }
+//
+//  if (Serial.available() and !client.connected()) {
+//    String Data = Serial.readString();
+//    parseComm(client, Data);
+//  }
+//  vTaskDelay(1); 
+// !watchdog все сломал!
+
   //// TCP handling ////
   if (client) {
     Serial.println("Client connected!");
     while (client.connected()) {
-      if (client.available()) {
-        String Data = client.readStringUntil('\n');
-        parseComm(client, Data);
-        vTaskDelay(1);
-      }
+       if (client.available()) {
+          String Data = client.readStringUntil('\n');
+          parseComm(client, Data);
+       }
     }
     client.stop();
   }
@@ -352,5 +380,19 @@ void loop() {
     String Data = Serial.readString();
     parseComm(client, Data);
   }
+  
   vTaskDelay(1);
+ 
+  tI = millis()+100;
+
+  while((stepY.tick() or stepX.tick()) and ((millis()+200) - tI) <= 400){
+    stepY.tick();
+    stepX.tick();
+    
+    if (Serial.available()) {
+      String Data = Serial.readString();
+      parseComm(client, Data);
+    }
+  }
+
 }
