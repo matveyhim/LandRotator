@@ -12,8 +12,8 @@ GStepper<STEPPER2WIRE> stepY(1280000L, 32, 33, 14);
  * 12800 steps
  * 1:100 recucer
  * ESP32-WROOM-DA Module
- * Arduino & Events on core 1
- * Stepper tick on core 0
+ * Arduino & Events on core 0
+ * Stepper tick on core 1
  */
 
 const char* ssid = "iPlanumXZ";
@@ -48,7 +48,7 @@ const char* password = "4edbarklox";
 #define minAZ  -90
 #define maxAZ  450
 
-#define Cal_on_start true    // Caibrate motors on startup
+#define Cal_on_start false    // Caibrate motors on startup
 
 #define Test_mode false       // don't return home after calibration
 #define Parking   true        // disable motors in parked position
@@ -56,8 +56,6 @@ const char* password = "4edbarklox";
 
 WiFiServer server(server_port);
 
-uint32_t tI;
-uint32_t t;
 float azSet;
 float elSet;
 
@@ -174,9 +172,9 @@ void parseComm(WiFiClient client, String resp) {
   String param;                                
   int ISpace;
   int IISpace;
-  float az;
-  float el;
+  float az, el;
   float x, y;
+  float XmotorPos, YmotorPos;
   
   //// parse TCP rotctl ////
   if (resp.startsWith("P") or resp.startsWith("p")) {
@@ -209,17 +207,12 @@ void parseComm(WiFiClient client, String resp) {
         
       if (elSet < minEL){elSet = minEL;}
         
-      if (XYmode){
-        struct XY pos = AE2XY(azSet, elSet);
-        azSet = pos.y;
-        elSet = pos.x;
-      }
       client.print("RPRT 0 \n");
     }
   
   } else if (resp.startsWith("AZ")) {//// parse serial easycomm ////
 
-    if (resp.indexOf("AZ EL")!=-1) {
+    if (resp.indexOf("AZ EL")!=-1) {       //// get pos ////
       y = stepY.getCurrentDeg();
       x = stepX.getCurrentDeg();
 
@@ -234,28 +227,32 @@ void parseComm(WiFiClient client, String resp) {
 
       printAzElSerial(az, el);                     //Send the current Azimuth and Elevation
 
-    } else if (resp.startsWith("AZ")) {            //Position command received: Parse the line.
-      ISpace = resp.indexOf(' ');                  //Get the position of the first space
-      IISpace = resp.indexOf(' ', ISpace + 1);     //Get the position of the second space
-      param = resp.substring(2, ISpace);           //Get the first parameter
+    } else if (resp.startsWith("AZ")) {    //// set pos ////
+      ISpace = resp.indexOf(' ');
+      IISpace = resp.indexOf(' ', ISpace + 1);
+      param = resp.substring(2, ISpace);
       azSet = param.toFloat();                     //Set the azSet value
       param = resp.substring(ISpace + 3, IISpace); //Get the second parameter
       elSet = param.toFloat();                     //Set the elSet value
 
-      if (XYmode){
-        struct XY pos = AE2XY(azSet, elSet);
-        azSet = pos.y;
-        elSet = pos.x;
-      }
     } else if (resp.indexOf("calibration")!=-1) {
       cal();
     }
   }
-  
-  stepX.setTargetDeg(elSet,ABSOLUTE);
-  stepY.setTargetDeg(azSet,ABSOLUTE);
 
-  if (x == 0.0 and y == 0.0 and Parking){
+  if (XYmode){
+    struct XY pos = AE2XY(azSet, elSet);
+    XmotorPos = pos.x;
+    YmotorPos = pos.y;
+  }else{
+    XmotorPos = elSet;
+    YmotorPos = azSet;
+  }
+  
+  stepX.setTargetDeg(XmotorPos,ABSOLUTE);
+  stepY.setTargetDeg(YmotorPos,ABSOLUTE);
+
+  if (x == 0.0 and y == 0.0  and  Parking){
      stepY.disable();
      stepX.disable();
   }else{
@@ -266,12 +263,14 @@ void parseComm(WiFiClient client, String resp) {
 
 void Task1code( void * Parameter ){ 
   while(1){
-    t = millis();
-    while((millis() - t) < 400){//infinite loop
-      stepY.tick();
-      stepX.tick();
-    }
-    vTaskDelay(1);
+//    t = millis();
+//    int minXp = stepX.getMinPeriod() / 2;
+//    int minYp = stepY.getMinPeriod() / 2;
+    stepX.tick();
+    stepY.tick();
+    
+//    delayMicroseconds(min(minXp, minYp));
+//    yield();
   }
 }
 
@@ -293,8 +292,8 @@ void setup() {
 //  pix.clear();
 //  pix.setBrightness(brightness);
 
-  stepY.setAcceleration(320000UL);
-  stepX.setAcceleration(320000UL);
+  stepY.setAcceleration(80000UL);
+  stepX.setAcceleration(80000UL);
   
   stepY.setMaxSpeed(Y_motor_speed);
   stepX.setMaxSpeed(X_motor_speed);
@@ -308,7 +307,7 @@ void setup() {
   stepX.autoPower(Auto_Pwr);
 
   delay(500); 
-  xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 0);
+  xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 1);
 }
 
 void loop() {
@@ -317,10 +316,11 @@ void loop() {
   if (client) {
     Serial.println("Client connected!");
     while (client.connected()) {
-       if (client.available()) {
-          String Data = client.readStringUntil('\n');
-          parseComm(client, Data);
-       }
+      if (client.available()) {
+        String Data = client.readStringUntil('\n');
+        parseComm(client, Data);
+        vTaskDelay(1);
+      }
     }
     client.stop();
   }
@@ -329,18 +329,5 @@ void loop() {
     String Data = Serial.readString();
     parseComm(client, Data);
   }
-  
   vTaskDelay(1);
- 
-  tI = millis()+100;
-
-  while((stepY.tick() or stepX.tick()) and ((millis()+200) - tI) <= 400){
-    stepY.tick();
-    stepX.tick();
-    
-    if (Serial.available()) {
-      String Data = Serial.readString();
-      parseComm(client, Data);
-    }
-  }
 }
