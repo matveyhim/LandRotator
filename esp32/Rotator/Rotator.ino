@@ -105,39 +105,39 @@ void cal(){
   fillStrip(255,0,0); // red, started
 
   // find X axis endstop //
-  stepY.setRunMode(KEEP_SPEED); // set keep speed run mode
-  stepY.setSpeedDeg(10);        // run motor until endstop
-  while(digitalRead(Xend)==0 and stepY.getCurrentDeg()<=180) {
-    stepY.tick();
-    if (stepY.getCurrentDeg()>180) while(1){
+  stepX.setRunMode(KEEP_SPEED); // set keep speed run mode
+  stepX.setSpeedDeg(10);        // run motor until endstop
+  while(digitalRead(Xend)==0 and stepX.getCurrentDeg()<=180) {
+    stepX.tick();
+    if (stepX.getCurrentDeg()>180) while(1){
       calError();
     }
   }
 
   // return home //
-  stepY.setCurrentDeg((90 + Y_offset)); // set current position with offset
-  stepY.setRunMode(FOLLOW_POS);       // set follow pos run mode
-  stepY.setTargetDeg(0, ABSOLUTE);    // return motor to 0
-  while(stepY.tick() and !Test_mode) {stepY.tick();}
+  stepX.setCurrentDeg((90 + X_offset)); // set current position with offset
+  stepX.setRunMode(FOLLOW_POS);       // set follow pos run mode
+  stepX.setTargetDeg(0, ABSOLUTE);    // return motor to 0
+  while(stepX.tick() and !Test_mode) {stepX.tick();}
   
   fillStrip(255,70,0); // yellow, half complete
 
   // find Y axis endstop //
-  stepX.setRunMode(KEEP_SPEED); // set keep speed run mode
-  stepX.setSpeedDeg(10);        // run motor until endstop
-  while(digitalRead(Yend)==0 and stepX.getCurrentDeg()<=180) {
-    stepX.tick();
-    if (stepX.getCurrentDeg()>180) while(1){
+  stepY.setRunMode(KEEP_SPEED); // set keep speed run mode
+  stepY.setSpeedDeg(10);        // run motor until endstop
+  while(digitalRead(Yend)==0 and stepY.getCurrentDeg()<=180) {
+    stepY.tick();
+    if (stepY.getCurrentDeg()>180) while(1){
         calError();
     }
   }
 
   // return home  //
-  stepX.setCurrentDeg((90 + X_offset)); // set current position with offset
-  stepX.setRunMode(FOLLOW_POS);       // set follow pos run mode
-  stepX.setTargetDeg(0,ABSOLUTE);     // return motor to 0
-  while(stepX.tick() and !Test_mode) {
-    stepX.tick();
+  stepY.setCurrentDeg((90 + Y_offset)); // set current position with offset
+  stepY.setRunMode(FOLLOW_POS);       // set follow pos run mode
+  stepY.setTargetDeg(0,ABSOLUTE);     // return motor to 0
+  while(stepY.tick() and !Test_mode) {
+    stepY.tick();
   }
 
   fillStrip(0,255,0); // green, completed
