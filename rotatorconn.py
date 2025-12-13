@@ -6,8 +6,8 @@ import time
 from math import asin, sin, cos, atan2, pi, degrees, radians
 from typing import Tuple
 
-XYmode = True # XY or AZ/EL rotator
-# XYmode = False
+# XYmode = True # XY or AZ/EL rotator
+XYmode = False
 baudrate = 115200
 # baudrate = 9600
 
@@ -19,6 +19,7 @@ ELhome = 0 # EL / Y motor home
 SendToHome = False # send rotator to home on startup
 
 minEL = 0
+maxEL = 75
 minAZ = -90
 maxAZ = 450
 
@@ -149,6 +150,9 @@ def doComms(client_socket):
         if az<minAZ:
             az = az+360
             
+        if el>maxEL:
+            el = maxEL
+
         if el<minEL:
             el = minEL
 
